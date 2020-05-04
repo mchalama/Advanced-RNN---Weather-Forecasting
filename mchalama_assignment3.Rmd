@@ -236,6 +236,6 @@ Let's take a look at our results:
 ```{r}
 plot(history)
 plot(history1)
-plot(history3)
+plot(history2)
 ```
 
