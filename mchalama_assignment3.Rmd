@@ -214,13 +214,19 @@ history1 <- model1 %>% fit_generator(
 
 ```{r}
 model2 <- keras_model_sequential() %>% 
-  layer_embedding(input_dim = 10000, output_dim = 128,
-                  input_length = 10) %>% 
-  layer_conv_1d(filters = 32, kernel_size = 7, activation = "relu") %>% 
-  layer_max_pooling_1d(pool_size = 5) %>% 
-  layer_conv_1d(filters = 32, kernel_size = 7, activation = "relu") %>% 
-  layer_global_max_pooling_1d() %>% 
-  layer_dense(units = 1)
+ layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu",
+ input_shape = list(NULL, dim(data)[[-1]])) %>%
+ layer_max_pooling_1d(pool_size = 3) %>%
+ layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu") %>%
+ layer_gru(units = 32, dropout = 0.1, recurrent_dropout = 0.5) %>%
+ layer_dense(units = 1)
+
+summary(model2)
+
+model %>% compile(
+ optimizer = optimizer_rmsprop(),
+ loss = "mae"
+)
 
 history2 <- model2 %>% fit_generator(
   train_gen,
@@ -237,5 +243,20 @@ Let's take a look at our results:
 plot(history)
 plot(history1)
 plot(history2)
+```
+
+Evaluate on Test Data
+
+```{r}
+
+model %>% fit_generator(
+  test_gen,
+  epochs = 40,
+  batch_size = 32,
+)
+
+result <- model %>%  evaluate_generator(test_gen, steps = 50) 
+result
+
 ```
 
