@@ -2,22 +2,10 @@
 title: "mchalama_Assignment3"
 author: "Manoj Kumar Chalamala"
 date: "4/10/2020"
-output: html_document
+output:
+  html_document: default
+  word_document: default
 ---
-
-Download and uncompress the data as follows:
-
-```{r, eval=FALSE, echo=TRUE}
-dir.create("~/Downloads/jena_climate", recursive = TRUE)
-download.file(
-  "https://s3.amazonaws.com/keras-datasets/jena_climate_2009_2016.csv.zip",
-  "~/Downloads/jena_climate/jena_climate_2009_2016.csv.zip"
-)
-unzip(
-  "~/Downloads/jena_climate/jena_climate_2009_2016.csv.zip",
-  exdir = "~/Downloads/jena_climate"
-)
-```
 
 
 Let's take a look at the data:
@@ -25,10 +13,9 @@ Let's take a look at the data:
 ```{r, results='hide'}
 library(tibble)
 library(readr)
+library(keras)
 
-data_dir <- "~/Downloads/jena_climate"
-fname <- file.path(data_dir, "jena_climate_2009_2016.csv")
-data <- read_csv(fname)
+data <- read_csv("jena_climate_2009_2016.csv")
 ```
 
 ```{r}
@@ -42,9 +29,10 @@ glimpse(data)
 data <- data.matrix(data[,-1])
 ```
 
+# Assign first 30000 samples to training data
 
 ```{r}
-train_data <- data[1:200000,]
+train_data <- data[1:30000,]
 mean <- apply(train_data, 2, mean)
 std <- apply(train_data, 2, sd)
 data <- scale(data, center = mean, scale = std)
@@ -85,7 +73,6 @@ generator <- function(data, lookback, delay, min_index, max_index,
 ```
 
 
-
 ```{r}
 lookback <- 1440
 step <- 6
@@ -97,7 +84,7 @@ train_gen <- generator(
   lookback = lookback,
   delay = delay,
   min_index = 1,
-  max_index = 200000,
+  max_index = 20000,
   shuffle = TRUE,
   step = step, 
   batch_size = batch_size
@@ -107,8 +94,8 @@ val_gen = generator(
   data,
   lookback = lookback,
   delay = delay,
-  min_index = 200001,
-  max_index = 300000,
+  min_index = 20001,
+  max_index = 25000,
   step = step,
   batch_size = batch_size
 )
@@ -117,24 +104,21 @@ test_gen <- generator(
   data,
   lookback = lookback,
   delay = delay,
-  min_index = 300001,
-  max_index = NULL,
+  min_index = 25001,
+  max_index = 30000,
   step = step,
   batch_size = batch_size
 )
 
 # This is how many steps to draw from `val_gen`
 # in order to see the whole validation set:
-val_steps <- (300000 - 200001 - lookback) / batch_size
+val_steps <- (25000 - 20001 - lookback) / batch_size
 
   # This is how many steps to draw from `test_gen`
 # in order to see the whole test set:
-test_steps <- (nrow(data) - 300001 - lookback) / batch_size
+test_steps <- (nrow(data) - 25001 - lookback) / batch_size
 ```
 
-```{r, eval=FALSE}
-mean(abs(preds - targets))
-```
 
 Here's our evaluation loop:
 
@@ -151,11 +135,7 @@ evaluate_naive_method <- function() {
 }
 ```
 
-It yields a MAE of 0.29. 
-
-## Stacking recurrent layers
-
-# Evaluate the model using layer_gru
+# Evaluate the model by adjusting the number of units to 32 and 64 using layer_gru
 
 ```{r}
 model <- keras_model_sequential() %>% 
@@ -168,6 +148,7 @@ model <- keras_model_sequential() %>%
             dropout = 0.1,
             recurrent_dropout = 0.5) %>% 
   layer_dense(units = 1)
+
 model %>% compile(
   optimizer = optimizer_rmsprop(),
   loss = "mae"
@@ -175,25 +156,41 @@ model %>% compile(
 
 history <- model %>% fit_generator(
   train_gen,
-  steps_per_epoch = 500,
-  epochs = 40,
+  steps_per_epoch = 10,
+  epochs = 5,
   validation_data = val_gen,
   validation_steps = val_steps
 )
 ```
 
+Evaluate on the Test set
+
+```{r}
+result <- model %>% fit_generator(
+  test_gen,
+  steps_per_epoch = 10,
+  epochs = 3,
+  validation_steps = test_steps
+)
+```
+
+```{r}
+plot(result)
+```
+
+# Not able to run the following code
+
 # Evaluate the model using layer_lstm and adjusting the number of units
 
-```{r, echo=TRUE, results='hide'}
 model1 <- keras_model_sequential() %>% 
   layer_lstm(units = 16, 
-            dropout = 0.1, 
-            recurrent_dropout = 0.5,
-            return_sequences = TRUE,
-            input_shape = list(NULL, dim(data)[[-1]])) %>% 
+             dropout = 0.1, 
+             recurrent_dropout = 0.5,
+             return_sequences = TRUE,
+             input_shape = list(NULL, dim(data)[[-1]])) %>% 
   layer_lstm(units = 16, activation = "relu",
-            dropout = 0.1,
-            recurrent_dropout = 0.5) %>% 
+             dropout = 0.1,
+             recurrent_dropout = 0.5) %>% 
   layer_dense(units = 1)
 
 model1 %>% compile(
@@ -208,24 +205,23 @@ history1 <- model1 %>% fit_generator(
   validation_data = val_gen,
   validation_steps = val_steps
 )
-```
+
 
 # Evaluate the model using 1d_convnets and rnn
 
-```{r}
 model2 <- keras_model_sequential() %>% 
- layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu",
- input_shape = list(NULL, dim(data)[[-1]])) %>%
- layer_max_pooling_1d(pool_size = 3) %>%
- layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu") %>%
- layer_gru(units = 32, dropout = 0.1, recurrent_dropout = 0.5) %>%
- layer_dense(units = 1)
+  layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu",
+                input_shape = list(NULL, dim(data)[[-1]])) %>%
+  layer_max_pooling_1d(pool_size = 3) %>%
+  layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu") %>%
+  layer_gru(units = 32, dropout = 0.1, recurrent_dropout = 0.5) %>%
+  layer_dense(units = 1)
 
 summary(model2)
 
 model %>% compile(
- optimizer = optimizer_rmsprop(),
- loss = "mae"
+  optimizer = optimizer_rmsprop(),
+  loss = "mae"
 )
 
 history2 <- model2 %>% fit_generator(
@@ -235,28 +231,3 @@ history2 <- model2 %>% fit_generator(
   validation_data = val_gen,
   validation_steps = val_steps
 )
-```
-
-Let's take a look at our results:
-
-```{r}
-plot(history)
-plot(history1)
-plot(history2)
-```
-
-Evaluate on Test Data
-
-```{r}
-
-model %>% fit_generator(
-  test_gen,
-  epochs = 40,
-  batch_size = 32,
-)
-
-result <- model %>%  evaluate_generator(test_gen, steps = 50) 
-result
-
-```
-
